@@ -392,6 +392,37 @@ bool HWSprite::CalculateVertices(HWDrawInfo* di, FVector3* v, DVector3* vp)
 		return true;
 	}
 
+	if (actor && actor->renderflags2 & RF2_BILLBOARDPITCH)
+	{
+		mat.MakeIdentity();
+
+		FAngle angle = FAngle::fromDeg(270. - Angles.Yaw.Degrees());
+		FAngle pitch = FAngle::fromDeg(-Angles.Pitch.Degrees());
+		pitch.Normalized180();
+
+		float angleRad = (FAngle::fromDeg(270.) - HWAngles.Yaw).Radians();
+		FVector3 diff = FVector3(vp->plusZ(0)) - FVector3(x,y,z);
+		DVector3 dif = DVector3(diff); // using "diff.Angle()/Pitch() refuses to compile.
+		FAngle angdiff = FAngle::fromDeg(dif.Angle().Degrees());
+		FAngle pitdiff = FAngle::fromDeg(dif.Pitch().Degrees());
+		angdiff = angdiff.Normalized180();
+
+		mat.Translate(x, z, y);
+
+		mat.Rotate(0, 1, 0, angle.Degrees());
+		mat.Rotate(1, 0, 0, pitch.Degrees());
+		mat.Rotate(0, 0, 1, angdiff.Degrees());
+
+		mat.Translate(-x,-z,-y);
+		
+		
+		v[0] = mat * FVector3(x2, z, y2);
+		v[1] = mat * FVector3(x1, z, y2);
+		v[2] = mat * FVector3(x2, z, y1);
+		v[3] = mat * FVector3(x1, z, y1);
+		return true;
+	}
+	
 	// [BB] Billboard stuff
 	const bool drawWithXYBillboard = ((particle && gl_billboard_particles && !(particle->flags & SPF_NO_XY_BILLBOARD)) || (!(actor && actor->renderflags & RF_FORCEYBILLBOARD)
 		//&& di->mViewActor != nullptr
@@ -1011,25 +1042,36 @@ void HWSprite::Process(HWDrawInfo *di, AActor* thing, sector_t * sector, area_t 
 			PerformSpriteClipAdjustment(thing, thingpos.XY(), spriteheight);
 		}
 
-		switch (spritetype)
+		if (thing->renderflags2 & RF2_BILLBOARDPITCH)
 		{
+			float bottomfac = -r.top;
+			float topfac = bottomfac - r.height;
+
+			x1 = x + leftfac;
+			x2 = x + rightfac;
+			y1 = y - topfac;
+			y2 = y - bottomfac;
+		}
+		else switch (spritetype)
+		{
+
 		case RF_FACESPRITE:
 		{
 			float viewvecX = vp.ViewVector.X;
 			float viewvecY = vp.ViewVector.Y;
 
-			x1 = x - viewvecY*leftfac;
-			x2 = x - viewvecY*rightfac;
-			y1 = y + viewvecX*leftfac;
-			y2 = y + viewvecX*rightfac;
-			if(di->Level->flags3 & LEVEL3_ISOMETRICSPRITES && (r_isocam  || (di->Level->flags3 & LEVEL3_ISOMETRICMODE))) // If sprites are drawn from an isometric perspective
+			x1 = x - viewvecY * leftfac;
+			x2 = x - viewvecY * rightfac;
+			y1 = y + viewvecX * leftfac;
+			y2 = y + viewvecX * rightfac;
+			if (di->Level->flags3 & LEVEL3_ISOMETRICSPRITES && (r_isocam || (di->Level->flags3 & LEVEL3_ISOMETRICMODE))) // If sprites are drawn from an isometric perspective
 			{
-			        float signX = 1.0;
+				float signX = 1.0;
 				float signY = 1.0;
-				if(viewvecX < 0) signX = -1.0;
-				if(viewvecY < 0) signY = -1.0;
-				if(viewvecX == 0) signX = 0.0;
-				if(viewvecY == 0) signY = 0.0;
+				if (viewvecX < 0) signX = -1.0;
+				if (viewvecY < 0) signY = -1.0;
+				if (viewvecX == 0) signX = 0.0;
+				if (viewvecY == 0) signY = 0.0;
 
 				x1 -= signX * thing->radius;
 				x2 -= signX * thing->radius;
@@ -1059,10 +1101,10 @@ void HWSprite::Process(HWDrawInfo *di, AActor* thing, sector_t * sector, area_t 
 			float viewvecX = Angles.Yaw.Cos();
 			float viewvecY = Angles.Yaw.Sin();
 
-			x1 = x + viewvecY*leftfac;
-			x2 = x + viewvecY*rightfac;
-			y1 = y - viewvecX*leftfac;
-			y2 = y - viewvecX*rightfac;
+			x1 = x + viewvecY * leftfac;
+			x2 = x + viewvecY * rightfac;
+			y1 = y - viewvecX * leftfac;
+			y2 = y - viewvecX * rightfac;
 			break;
 		}
 		}
@@ -1195,6 +1237,7 @@ void HWSprite::Process(HWDrawInfo *di, AActor* thing, sector_t * sector, area_t 
 
 		if (!gl_sprite_blend || modelframe ||
 			(thing->renderflags & (RF_FLATSPRITE | RF_WALLSPRITE)) ||
+			(thing->renderflags2 & RF2_BILLBOARDPITCH) ||
 			(hw_force_cambbpref ? gl_billboard_faces_camera :
 			(gl_billboard_faces_camera && !(thing->renderflags2 & RF2_BILLBOARDNOFACECAMERA)) ||
 			thing->renderflags2 & RF2_BILLBOARDFACECAMERA))
